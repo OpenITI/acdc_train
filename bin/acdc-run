@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+
+dir=`dirname $0`
+
+ACDC_HOME="$dir"/..
+
+SPARK_SUBMIT_ARGS="$SPARK_SUBMIT_ARGS"
+
+class=$1
+shift
+
+spark-submit \
+    $SPARK_SUBMIT_ARGS \
+    "$ACDC_HOME"/share/"$class" "$@";

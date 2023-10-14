@@ -1,3 +1,16 @@
+# Makefile for ACDC training
+
+segment=../arabic_script_ocr_models/pretrained_print_layout.mlmodel
+ocr=print_transcription_NEW.mlmodel
+
+## Define execution rules without, and with, slurm
+slurm=$(shell which srun 2>/dev/null)
+
+ifeq ($(slurm),)
+spark_run=$(1)
+slurm_run=$(1)
+gpu_run=$(1)
+else
 REF=ref
 QUEUE=short
 WORKERS=40
@@ -16,9 +29,7 @@ scancel $$SPARK_WORKER_JOBID $$SPARK_MASTER_JOBID
 slurm_run = srun --time 1-0 -p ${QUEUE} -N 1 -c $(SWORKERS) --mem=$(SMEM)G bash -c "$(1)";
 
 gpu_run = srun -p gpu --gres=gpu:k80:1 -N 1 -c 1 --mem=4G --time=08:00:00 bash -c "$(1)";
-
-segment=../arabic_script_ocr_models/pretrained_print_layout.mlmodel
-ocr=print_transcription_NEW.mlmodel
+endif
 
 .SECONDARY:
 

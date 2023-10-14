@@ -18,6 +18,8 @@ If you're starting with PDF files, put them in a subdirectory named `pdf`.  If y
 
 If you put plain text files in a directory named `electronic_texts`, they will be interpreted with OpenITI markdown.  If you prefer, you could put JSONL-formatted input in `electronic_texts.json`.  This uses the `passim` conventions of an `id` field for a unique document identifier and `text` field, potentially with escaped newlines, for the text.
 
+In the paper, we bootstrapped training starting from [page segmentation and transcription models](https://github.com/OpenITI/arabic_script_ocr_models) trained on printed Arabic-script books.  You can change the `segment` and `ocr` variables in the `Makefile` to train from a different starting model.
+
 You should then be able to run experiments with three rounds of OCR'ing the books in `pdf` or `images` and retraining by running this `make` command:
 ```
 make gen2-print-n7m5.out/alto-union/ft_best.mlmodel

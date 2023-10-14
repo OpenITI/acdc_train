@@ -16,6 +16,6 @@ setuptools.setup(
         'pyspark>=3.0.1'
      ],
     scripts=['bin/acdc-run', 'bin/pdf_images.py'],
-    data_files=[('share', ['share/alto-lines.py'])],
+    data_files=[('share', ['share/alto-lines.py', 'share/openiti-files.py'])],
     python_requires='>=3.6',
 )

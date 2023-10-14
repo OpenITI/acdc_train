@@ -85,11 +85,14 @@ gen2-%.out/alto-union/alto.lis:	gen2-%.out/lines.json/_SUCCESS gen1-%.out/lines.
 	vtrun patch-alto.py '{,gen1-,gen2-}$*.out/lines.json' $(dir $@)
 	find $(dir $@) -type f -name '*.xml' > $@
 
-%.in/_SUCCESS:	%/_SUCCESS
+%.in/_SUCCESS:	%/_SUCCESS electronic_texts.json/_SUCCESS
 	mkdir -p $(dir $@)
-	$(call spark_run,vtrun alto-lines.py $(dir $<) $(dir $@)/ref$(eq)0)
-	(cd $(dir $@); ln -s ../docs/ref$(eq)1)
+	$(call spark_run,acdc-run alto-lines.py $(dir $<) $(dir $@)/ref$(eq)0)
+	(cd $(dir $@); ln -s ../electronic_texts.json ref$(eq)1)
 	touch $@
+
+electronic_texts.json/_SUCCESS:	electronic_texts
+	$(call slurm_run,acdc-run openiti-files.py $< $(dir $@))
 
 %/ft_best.mlmodel:	%/dataset.arrow
 	$(call gpu_run,ketos train --device cuda:0 --load print_transcription_NEW.mlmodel --lrate 0.0001 --output $*/ft --normalization NFD --normalize-whitespace --resize add --fixed-splits --format-type binary $< >& $*/ft.err)

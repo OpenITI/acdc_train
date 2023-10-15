@@ -2,7 +2,12 @@
 
 This package provides code for producing training data for optical character recognition and handwritten text recogntion (OCR and HTR) by aligning the output of an initial model on a collections of images with a collection of digital editions of similar texts.
 
-First, install `passim` and `kraken`.
+First, install [`passim`](https://github.com/dasmiq/passim). Then install [`kraken`](https://github.com/mittagessen/kraken).  If you want to start with PDF files of books rather than page images, use the `pdf` option:
+```
+pip install --user kraken[pdf]
+```
+
+After this is complete, the programs `seriatim`, `kraken`, and `ketos` should be in your PATH and available on the command line.
 
 Install the scripts in this package with:
 ```
@@ -23,4 +28,9 @@ In the paper, we bootstrapped training starting from [page segmentation and tran
 You should then be able to run experiments with three rounds of OCR'ing the books in `pdf` or `images` and retraining by running this `make` command:
 ```
 make gen2-print-n7m5.out/alto-union/ft_best.mlmodel
+```
+
+If any of the steps in the pipeline complain about running out of memory, try setting the following environment variable, e.g., for 20G:
+```
+export SPARK_SUBMIT_ARGS='--executor-memory 20G --driver-memory 20G'
 ```

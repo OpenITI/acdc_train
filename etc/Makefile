@@ -1,26 +1,28 @@
 # Makefile for ACDC training
 
-segment=../arabic_script_ocr_models/pretrained_print_layout.mlmodel
+segment=pretrained_print_layout.mlmodel
 ocr=print_transcription_NEW.mlmodel
+N=7
+M=5
+
+KRAKEN_DEVICE=
+
+SWORKERS=10
+SMEM=10
 
 ## Define execution rules without, and with, slurm
 slurm=$(shell which srun 2>/dev/null)
 
 ifeq ($(slurm),)
-spark_run=$(1)
-slurm_run=$(1)
-gpu_run=$(1)
+spark_run=bash -c "$(1)"
+slurm_run=bash -c "$(1)"
+gpu_run=bash -c "$(1)"
 else
 REF=ref
 QUEUE=short
 WORKERS=40
 CORES=5
 CMEM=8
-N=7
-M=5
-
-SWORKERS=10
-SMEM=40
 
 spark_run = WORKERS=${WORKERS} CORES=${CORES} CMEM=${CMEM} QUEUE=${QUEUE} source run-saspark.sh; \
 srun -x c0178,c3085 --time 1-0 -p ${QUEUE} -N 1 -c 2 --mem=40G -d "after:$$SPARK_MASTER_JOBID" bash -c "$(1)"; \
@@ -65,12 +67,12 @@ splits/_SUCCESS:	images/_SUCCESS
 	touch $@
 
 print/_SUCCESS:	splits/_SUCCESS
-	$(MAKE) SMEM=10 $(patsubst splits/%,print/jobs/_%,$(wildcard splits/x*))
+	$(MAKE) `ls -1 splits/x* | sed -e 's/splits\//print\/jobs\/_/'`
 	touch $@
 
 print/jobs/_%:	splits/%
 	mkdir -p $(dir $@)
-	$(call slurm_run,cat $< | batkraken.sh print --alto segment --model $(segment) -d horizontal-rl --baseline ocr --model $(ocr) --base-dir R >& $@.err)
+	$(call slurm_run,cat $< | batkraken.sh print $(KRAKEN_DEVICE) --alto segment --model $(segment) -d horizontal-rl --baseline ocr --model $(ocr) --base-dir R >& $@.err)
 	touch $@
 
 gen1-print/_SUCCESS:	splits/_SUCCESS
@@ -79,7 +81,7 @@ gen1-print/_SUCCESS:	splits/_SUCCESS
 
 gen1-print/jobs/_%:	splits/%
 	mkdir -p $(dir $@)
-	$(call gpu_run,cat $< | batkraken.sh gen1-print --alto --device cuda:0 segment --model $(segment) -d horizontal-rl --baseline ocr --model $(ocr) --base-dir R >& $@.err)
+	$(call gpu_run,cat $< | batkraken.sh gen1-print --alto $(KRAKEN_DEVICE) segment --model $(segment) -d horizontal-rl --baseline ocr --model $(ocr) --base-dir R >& $@.err)
 	touch $@
 
 gen2-print/_SUCCESS:	splits/_SUCCESS $(patsubst splits/%,gen2-print/jobs/_%,$(wildcard splits/x*))
@@ -87,7 +89,7 @@ gen2-print/_SUCCESS:	splits/_SUCCESS $(patsubst splits/%,gen2-print/jobs/_%,$(wi
 
 gen2-print/jobs/_%:	splits/%
 	mkdir -p $(dir $@)
-	$(call slurm_run,cat $< | batkraken.sh gen2-print --alto segment --model $(segment) -d horizontal-rl --baseline ocr --model gen1-print-n7m5.out/alto-nall/ft_best.mlmodel --base-dir R >& $@.err)
+	$(call slurm_run,cat $< | batkraken.sh gen2-print --alto $(KRAKEN_DEVICE) segment --model $(segment) -d horizontal-rl --baseline ocr --model gen1-print-n7m5.out/alto-nall/ft_best.mlmodel --base-dir R >& $@.err)
 	touch $@
 
 gen2-%.out/alto-union/alto.lis:	gen2-%.out/lines.json/_SUCCESS gen1-%.out/lines.json/_SUCCESS %.out/lines.json/_SUCCESS
@@ -104,4 +106,4 @@ electronic_texts.json/_SUCCESS:	electronic_texts
 	$(call slurm_run,acdc-run openiti-files.py $< $(dir $@))
 
 %/ft_best.mlmodel:	%/dataset.arrow
-	$(call gpu_run,ketos train --device cuda:0 --load $(ocr) --lrate 0.0001 --output $*/ft --normalization NFD --normalize-whitespace --resize add --fixed-splits --format-type binary $< >& $*/ft.err)
+	$(call gpu_run,ketos train $(KRAKEN_DEVICE) --load $(ocr) --lrate 0.0001 --output $*/ft --normalization NFD --normalize-whitespace --resize add --fixed-splits --format-type binary $< >& $*/ft.err)

@@ -13,7 +13,7 @@ from io import BytesIO
 @click.command()
 @click.option('-d', '--dpi', default=300, show_default=True,
               help='Output DPI.')
-@click.option('-p', '--pattern', default='%s_page_%d.png', show_default=True,
+@click.option('-p', '--pattern', default='{0}_page_{1}.png', show_default=True,
               help='Pattern for filenames of individual pages.')
 @click.option('-n', '--offset', default=1, show_default=True,
               help='Offset for file numbers.')

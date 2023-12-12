@@ -102,7 +102,7 @@ if __name__ == '__main__':
                               (r['start'] + r['length'] <= col('begin') + length('dstText')))[0]['id']
         ).withColumn('regions',
                      f.filter('regions', lambda r: (r['start'] >= col('begin')) &
-                              (r['start'] + r['length'] <= col('begin') + col('dstLength')))
+                              ((r['start'] + r['length']) <= (col('begin') + length('dstText'))))
         ).withColumn('x', f.array_min('regions.coords.x')
         ).withColumn('y', f.array_min('regions.coords.y')
         ).withColumn('w',

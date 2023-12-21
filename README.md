@@ -25,12 +25,17 @@ If you put plain text files in a directory named `electronic_texts`, they will b
 
 In the paper, we bootstrapped training starting from [page segmentation and transcription models](https://github.com/OpenITI/arabic_script_ocr_models) trained on printed Arabic-script books.  You can change the `segment` and `ocr` variables in the `Makefile` to train from a different starting model.
 
-You should then be able to run experiments with three rounds of OCR'ing the books in `pdf` or `images` and retraining by running this `make` command:
+You should then be able to run experiments with three rounds of OCR'ing the pages in `pdf` or `images` and retraining by running this `make` command:
 ```
-make gen2-print-n7m5.out/alto-union/ft_best.mlmodel
+make all
 ```
 
-If any of the steps in the pipeline complain about running out of memory, try setting the following environment variable, e.g., for 20G:
+If you have a GPU that works with kraken, uncomment the line near the top of the Makefile to use that device with kraken:
 ```
-export SPARK_SUBMIT_ARGS='--executor-memory 20G --driver-memory 20G'
+KRAKEN_DEVICE=-d cuda:0
+```
+
+If any of the steps in the pipeline complain about running out of memory, edit the line near to the top of the Makefile to give spark more than 4GB of memory:
+```
+export SPARK_SUBMIT_ARGS=--executor-memory 4G --driver-memory 4G
 ```

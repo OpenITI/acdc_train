@@ -1,11 +1,18 @@
 # Makefile for ACDC training
+# Run "make all" to run three iterations of ACDC
 
+# Baseline segmentation and OCR models
 segment=pretrained_print_layout.mlmodel
 ocr=print_transcription_NEW.mlmodel
 N=7
 M=5
 
 KRAKEN_DEVICE=
+# Uncomment this line to use a GPU with kraken
+# KRAKEN_DEVICE=-d cuda:0
+
+# Edit this to change spark options for running passim etc.
+export SPARK_SUBMIT_ARGS=--executor-memory 4G --driver-memory 4G
 
 SWORKERS=10
 SMEM=10
@@ -75,21 +82,22 @@ print/jobs/_%:	splits/%
 	$(call slurm_run,cat $< | batkraken.sh print $(KRAKEN_DEVICE) --alto segment --model $(segment) -d horizontal-rl --baseline ocr --model $(ocr) --base-dir R >& $@.err)
 	touch $@
 
-gen1-print/_SUCCESS:	splits/_SUCCESS
-	$(MAKE) ocr=print-n7m5.out/alto-nall/ft_best.mlmodel $(patsubst splits/%,gen1-print/jobs/_%,$(wildcard splits/x*))
+gen1-print/_SUCCESS:	 print-n$(N)m$(M).out/alto-nall/ft_best.mlmodel splits/_SUCCESS
+	$(MAKE) `ls -1 splits/x* | sed -e 's/splits\//gen1-print\/jobs\/_/'`
 	touch $@
 
-gen1-print/jobs/_%:	splits/%
+gen1-print/jobs/_%:	 splits/%
 	mkdir -p $(dir $@)
-	$(call gpu_run,cat $< | batkraken.sh gen1-print --alto $(KRAKEN_DEVICE) segment --model $(segment) -d horizontal-rl --baseline ocr --model $(ocr) --base-dir R >& $@.err)
+	$(call gpu_run,cat $< | batkraken.sh gen1-print --alto $(KRAKEN_DEVICE) segment --model $(segment) -d horizontal-rl --baseline ocr --model print-n$(N)m$(M).out/alto-nall/ft_best.mlmodel --base-dir R >& $@.err)
 	touch $@
 
-gen2-print/_SUCCESS:	splits/_SUCCESS $(patsubst splits/%,gen2-print/jobs/_%,$(wildcard splits/x*))
+gen2-print/_SUCCESS:	gen1-print-n$(N)m$(M).out/alto-nall/ft_best.mlmodel splits/_SUCCESS
+	$(MAKE) `ls -1 splits/x* | sed -e 's/splits\//gen2-print\/jobs\/_/'`
 	touch $@
 
 gen2-print/jobs/_%:	splits/%
 	mkdir -p $(dir $@)
-	$(call slurm_run,cat $< | batkraken.sh gen2-print --alto $(KRAKEN_DEVICE) segment --model $(segment) -d horizontal-rl --baseline ocr --model gen1-print-n7m5.out/alto-nall/ft_best.mlmodel --base-dir R >& $@.err)
+	$(call slurm_run,cat $< | batkraken.sh gen2-print --alto $(KRAKEN_DEVICE) segment --model $(segment) -d horizontal-rl --baseline ocr --model gen1-print-n$(N)m$(M).out/alto-nall/ft_best.mlmodel --base-dir R >& $@.err)
 	touch $@
 
 gen2-%.out/alto-union/alto.lis:	gen2-%.out/lines.json/_SUCCESS gen1-%.out/lines.json/_SUCCESS %.out/lines.json/_SUCCESS
@@ -107,3 +115,5 @@ electronic_texts.json/_SUCCESS:	electronic_texts
 
 %/ft_best.mlmodel:	%/dataset.arrow
 	$(call gpu_run,ketos train $(KRAKEN_DEVICE) --load $(ocr) --lrate 0.0001 --output $*/ft --normalization NFD --normalize-whitespace --resize add --fixed-splits --format-type binary $< >& $*/ft.err)
+
+all:	gen2-print-n7m5.out/alto-union/ft_best.mlmodel

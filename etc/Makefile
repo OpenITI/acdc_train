@@ -45,19 +45,21 @@ endif
 eq := =
 comma := ,
 
+cwd=$(shell pwd)/
+
 %/dataset.arrow:	%/alto.lis
 	$(call slurm_run,ketos compile --workers $(SWORKERS) --ignore-splits --random-split 0.9 0.1 0.0 -o $@ -f alto -F $<)
 
 %/alto-nall/alto.lis:	%/lines.json/_SUCCESS
-	$(call slurm_run,acdc-run patch-alto.py $(dir $<) $(dir $@))
+	$(call slurm_run,acdc-run gen-alto.py --base ${cwd} $(dir $<) $(dir $@))
 	find $(dir $@) -type f -name '*.xml' > $@
 
 %/alto-n1000/alto.lis:	%/lines.json/_SUCCESS
-	$(call slurm_run,acdc-run patch-alto.py -n 1000 $(dir $<) $(dir $@))
+	$(call slurm_run,acdc-run gen-alto.py --base ${cwd} -n 1000 $(dir $<) $(dir $@))
 	find $(dir $@) -type f -name '*.xml' > $@
 
 %/lines.json/_SUCCESS:	%/out.json/_SUCCESS
-	$(call slurm_run,acdc-run wit-lines.py $(dir $<) $(dir $@))
+	$(call slurm_run,export SPARK_SUBMIT_ARGS+=' --conf spark.sql.sources.default=json'; acdc-run wit-lines.py $(dir $<) $(dir $@))
 
 %-n$(N)m$(M).out/out.json/_SUCCESS:	%.in/_SUCCESS
 	$(call spark_run,seriatim --docwise --log-level INFO --floating-ngrams --complete-lines -n $(N) -m $(M) --fields ref --filterpairs 'ref = 1 AND ref2 = 0' $(dir $<) $(dir $(patsubst %/,%,$(dir $@))))
@@ -101,7 +103,7 @@ gen2-print/jobs/_%:	splits/%
 	touch $@
 
 gen2-%.out/alto-union/alto.lis:	gen2-%.out/lines.json/_SUCCESS gen1-%.out/lines.json/_SUCCESS %.out/lines.json/_SUCCESS
-	acdc-run patch-alto.py '{,gen1-,gen2-}$*.out/lines.json' $(dir $@)
+	acdc-run gen-alto.py --base ${cwd} '{,gen1-,gen2-}$*.out/lines.json' $(dir $@)
 	find $(dir $@) -type f -name '*.xml' > $@
 
 %.in/_SUCCESS:	%/_SUCCESS electronic_texts.json/_SUCCESS

@@ -1,7 +1,33 @@
-import argparse, re
+import argparse, math, re
 from pyspark.sql import SparkSession, Row
 from pyspark.sql.functions import col, collect_list, explode, length, lit, struct, translate, udf
 import pyspark.sql.functions as f
+
+def witLines(lines, regions, min_line=0):
+    res = []
+    i = 0
+    for line in lines:
+        if line.wits != None and len(line.wits) > 0:
+            wit = line.wits[0]
+            dstAlg = wit.alg2
+            dstLength = len(dstAlg.replace('-', '').strip())
+            if dstLength >= min_line:
+                tlen = len(line.text)
+                end = line.begin + len(line.text)
+                while i < len(regions) and regions[i].start < line.begin:
+                    i += 1
+                x1, y1, x2, y2 = math.inf, math.inf, -math.inf, -math.inf
+                while i < len(regions) and (regions[i].start + regions[i].length) <= end:
+                    cur = regions[i].coords
+                    x1 = min(x1, cur.x)
+                    y1 = min(y1, cur.y)
+                    x2 = max(x2, cur.x + cur.w)
+                    y2 = max(y2, cur.y + cur.h)
+                    i += 1
+                res.append((line.begin, line.text, wit.id, wit.matches,
+                            wit.alg.replace('\n', ' '), dstAlg, dstLength,
+                            x1, y1, x2 - x1, y2 - y1))
+    return res
 
 # length of the maximum alignment gap
 def maxGap(s):
@@ -67,23 +93,26 @@ if __name__ == '__main__':
     digit_match = udf(lambda src, dst: digitMatch(src, dst), 'double')
     sstrip = udf(lambda s: s.strip())
 
-    raw = spark.read.json(config.inputPath)
-    if 'lineIDs' not in raw.columns:
-        r = Row(start=0, length=0, id='')
-        raw = raw.withColumn('lineIDs', f.array(struct(lit(0).alias('start'), lit(0).alias('length'), lit('').alias('id'))))
+    wit_lines = udf(lambda lines, regions: witLines(lines, regions, config.min_line),
+                    'array<struct<begin: int, dstText: string, src: string, matches: int, srcAlg: string, dstAlg: string, dstLength: int, x: int, y: int, w: int, h: int>>')
+
+    raw = spark.read.load(config.inputPath)
     
-    raw.select('id', 'lineIDs', col('pages')[0].alias('page'), explode('lines').alias('line')
-        ).filter(col('line.wits').isNotNull()
-        ).select(col('page.id').alias('img'), 'id', 'lineIDs', col('page.regions'),
-                 col('page.width'), col('page.height'),
-                 col('line.begin'), length(sstrip('line.text')).alias('length'),
-                 col('line.text').alias('dstText'),
-                 col('line.wits')[0]['id'].alias('src'),
-                 col('line.wits')[0]['matches'].alias('matches'),
-                 translate(col('line.wits')[0]['alg'], '\n', ' ').alias('srcAlg'),
-                 col('line.wits')[0]['alg2'].alias('dstAlg')
-        ).withColumn('dstLength', length(sstrip(translate('dstAlg', '-', '')))
-        ).filter(col('dstLength') >= config.min_line
+    raw.withColumn('page', col('pages')[0]
+        ).select('id', f.size('lines').alias('nlines'),
+                 col('page.id').alias('img'), col('page.width'), col('page.height'),
+                 explode(wit_lines('lines', 'page.regions')).alias('line')
+        ).select('id', 'nlines', 'img', 'width', 'height', col('line.*')
+        # ).select(col('page.id').alias('img'), 'id', 'nlines', col('page.regions'),
+        #          col('page.width'), col('page.height'),
+        #          col('line.begin'), length(sstrip('line.text')).alias('length'),
+        #          col('line.text').alias('dstText'),
+        #          col('line.wits')[0]['id'].alias('src'),
+        #          col('line.wits')[0]['matches'].alias('matches'),
+        #          translate(col('line.wits')[0]['alg'], '\n', ' ').alias('srcAlg'),
+        #          col('line.wits')[0]['alg2'].alias('dstAlg')
+        # ).withColumn('dstLength', length(sstrip(translate('dstAlg', '-', '')))
+        # ).filter(col('dstLength') >= config.min_line
         ).withColumn('srcAlg', fix_hyphen('srcAlg', 'dstAlg')
         ).withColumn('srcOrig', col('srcAlg')
         ).withColumn('srcAlg', fix_case('srcAlg', 'dstAlg')
@@ -96,22 +125,18 @@ if __name__ == '__main__':
         ).withColumn('tailGap', f.greatest(length(f.regexp_extract('dstAlg', r'(\-+)\s*$', 1)),
                                            length(f.regexp_extract('srcAlg', r'(\-+)\s*$', 1)))
         ).withColumn('digitMatch', digit_match('srcAlg', 'dstAlg')
-        ).withColumn('nlines', f.size('lineIDs')
-        ).withColumn('lineID',
-                     f.filter('lineIDs', lambda r: (r['start'] >= col('begin')) &
-                              (r['start'] + r['length'] <= col('begin') + length('dstText')))[0]['id']
-        ).withColumn('regions',
-                     f.filter('regions', lambda r: (r['start'] >= col('begin')) &
-                              ((r['start'] + r['length']) <= (col('begin') + length('dstText'))))
-        ).withColumn('x', f.array_min('regions.coords.x')
-        ).withColumn('y', f.array_min('regions.coords.y')
-        ).withColumn('w',
-                     f.array_max(f.transform('regions.coords',
-                                             lambda r: r['x'] + r['w'])) - col('x')
-        ).withColumn('h',
-                     f.array_max(f.transform('regions.coords',
-                                             lambda r: r['y'] + r['h'])) - col('y')
-        ).drop('regions', 'lineIDs'
+        # ).withColumn('regions',
+        #              f.filter('regions', lambda r: (r['start'] >= col('begin')) &
+        #                       ((r['start'] + r['length']) <= (col('begin') + length('dstText'))))
+        # ).withColumn('x', f.array_min('regions.coords.x')
+        # ).withColumn('y', f.array_min('regions.coords.y')
+        # ).withColumn('w',
+        #              f.array_max(f.transform('regions.coords',
+        #                                      lambda r: r['x'] + r['w'])) - col('x')
+        # ).withColumn('h',
+        #              f.array_max(f.transform('regions.coords',
+        #                                      lambda r: r['y'] + r['h'])) - col('y')
+        # ).drop('regions'
         ).sort(f.desc('matchRate')
         ).write.json(config.outputPath, mode='overwrite')
 

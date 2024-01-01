@@ -17,6 +17,6 @@ setuptools.setup(
      ],
     scripts=['bin/acdc-run', 'bin/pdf_images.py', 'bin/batkraken.sh'],
     data_files=[('share', ['share/alto-lines.py', 'share/openiti-files.py',
-                           'share/patch-alto.py', 'share/wit-lines.py'])],
+                           'share/gen-alto.py', 'share/patch-alto.py', 'share/wit-lines.py'])],
     python_requires='>=3.6',
 )

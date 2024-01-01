@@ -9,14 +9,15 @@ from PIL import Image
 ns = {'alto': 'http://www.loc.gov/standards/alto/ns-v4#'}
 nspref = f'{{{ns["alto"]}}}'
 
-def genAlto(path, img, width, height, lines):
+def genAlto(scale, path, img, width, height, lines):
     from lxml.builder import E
 
-    S = 1
+    S = 1                       # coordinate scaling factor
 
-    with Image.open(img) as fimg:
-        iw, ih = fimg.size
-        S = 1 / round(width / iw)
+    if scale:
+        with Image.open(img) as fimg:
+            iw, ih = fimg.size
+            S = 1 / round(width / iw)
 
     lelem = []
     lid = 0
@@ -56,12 +57,16 @@ def genAlto(path, img, width, height, lines):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Patch Alto',
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument('-b', '--base', type=str, default='',
+                        help='Base path for images')
     parser.add_argument('-f', '--filter', type=str,
                         default='matchRate > 0.5 AND leadGap = 0 AND tailGap = 0 AND maxGap < 4 AND length = dstLength',
                         help='Filter training lines')
     parser.add_argument('-n', '--lines', type=int,
                         default=None,
                         help='Maximum number of lines per book')
+    parser.add_argument('-s', '--scale', action='store_true',
+                        help='Check image size to rescale coordinates')
     parser.add_argument('inputPath', metavar='<input path>', help='input path')
     parser.add_argument('outputPath', metavar='<output path>', help='output path')
 
@@ -69,10 +74,9 @@ if __name__ == '__main__':
     spark = SparkSession.builder.appName('Patch Alto').getOrCreate()
     spark.sparkContext.setLogLevel('WARN')
 
-    base = '/work/proj_cssh/nulab/corpora/chroniclingamerica/data/batches/'
-
     gen_alto = udf(lambda fout, img, width, height,
-                   lines: genAlto(config.outputPath+'/'+fout, base+img, width, height, lines),
+                   lines: genAlto(config.scale, config.outputPath+'/'+fout, config.base+img,
+                                  width, height, lines),
                    'int').asNondeterministic()
 
     raw = spark.read.json(config.inputPath).filter(config.filter)

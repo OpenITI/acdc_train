@@ -3,8 +3,9 @@ from pyspark.sql import SparkSession, Row
 from pyspark.sql.functions import col, collect_list, explode, length, lit, struct, translate, udf
 import pyspark.sql.functions as f
 
-def witLines(lines, regions, min_line=0):
+def witLines(lines, pages, min_line=0):
     res = []
+    p = 0
     i = 0
     for line in lines:
         if line.wits != None and len(line.wits) > 0:
@@ -14,11 +15,20 @@ def witLines(lines, regions, min_line=0):
             if dstLength >= min_line:
                 tlen = len(line.text)
                 end = line.begin + len(line.text)
-                while i < len(regions) and regions[i].start < line.begin:
-                    i += 1
+                while p < len(pages):
+                    while i < len(pages[p].regions) and pages[p].regions[i].start < line.begin:
+                        i += 1
+                    if i >= len(pages[p].regions):
+                        p += 1
+                        i = 0
+                    else:
+                        break
+                if p >= len(pages):
+                    break
                 x1, y1, x2, y2 = math.inf, math.inf, -math.inf, -math.inf
-                while i < len(regions) and (regions[i].start + regions[i].length) <= end:
-                    cur = regions[i].coords
+                while (i < len(pages[p].regions) and
+                       (pages[p].regions[i].start + pages[p].regions[i].length) <= end):
+                    cur = pages[p].regions[i].coords
                     x1 = min(x1, cur.x)
                     y1 = min(y1, cur.y)
                     x2 = max(x2, cur.x + cur.w)
@@ -26,6 +36,7 @@ def witLines(lines, regions, min_line=0):
                     i += 1
                 res.append((line.begin, line.text, wit.id, wit.matches,
                             wit.alg.replace('\n', ' '), dstAlg, dstLength,
+                            pages[p].id, pages[p].width, pages[p].height,
                             x1, y1, x2 - x1, y2 - y1))
     return res
 
@@ -93,16 +104,15 @@ if __name__ == '__main__':
     digit_match = udf(lambda src, dst: digitMatch(src, dst), 'double')
     sstrip = udf(lambda s: s.strip())
 
-    wit_lines = udf(lambda lines, regions: witLines(lines, regions, config.min_line),
-                    'array<struct<begin: int, dstText: string, src: string, matches: int, srcAlg: string, dstAlg: string, dstLength: int, x: int, y: int, w: int, h: int>>')
+    wit_lines = udf(lambda lines, pages: witLines(lines, pages, config.min_line),
+                    'array<struct<begin: int, dstText: string, src: string, matches: int, srcAlg: string, dstAlg: string, dstLength: int, img: string, width: int, height: int, x: int, y: int, w: int, h: int>>')
 
     raw = spark.read.load(config.inputPath)
     
-    raw.withColumn('page', col('pages')[0]
+    raw.filter(col('pages').isNotNull() & (f.size('pages') == 1) & col('pages')[0]['regions'].isNotNull()
         ).select('id', f.size('lines').alias('nlines'),
-                 col('page.id').alias('img'), col('page.width'), col('page.height'),
-                 explode(wit_lines('lines', 'page.regions')).alias('line')
-        ).select('id', 'nlines', 'img', 'width', 'height', col('line.*')
+                 explode(wit_lines('lines', 'pages')).alias('line')
+        ).select('id', 'nlines', col('line.*')
         # ).select(col('page.id').alias('img'), 'id', 'nlines', col('page.regions'),
         #          col('page.width'), col('page.height'),
         #          col('line.begin'), length(sstrip('line.text')).alias('length'),
@@ -113,6 +123,7 @@ if __name__ == '__main__':
         #          col('line.wits')[0]['alg2'].alias('dstAlg')
         # ).withColumn('dstLength', length(sstrip(translate('dstAlg', '-', '')))
         # ).filter(col('dstLength') >= config.min_line
+        ).withColumn('length', length(sstrip('dstText'))
         ).withColumn('srcAlg', fix_hyphen('srcAlg', 'dstAlg')
         ).withColumn('srcOrig', col('srcAlg')
         ).withColumn('srcAlg', fix_case('srcAlg', 'dstAlg')

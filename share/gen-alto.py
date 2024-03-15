@@ -15,9 +15,13 @@ def genAlto(scale, path, img, width, height, lines):
     S = 1                       # coordinate scaling factor
 
     if scale:
-        with Image.open(img) as fimg:
-            iw, ih = fimg.size
-            S = 1 / round(width / iw)
+        try:
+            with Image.open(img) as fimg:
+                iw, ih = fimg.size
+                S = 1 / round(width / iw)
+        except:
+            print('## Bad file: ', img)
+            return 0
 
     lelem = []
     lid = 0
@@ -74,8 +78,9 @@ if __name__ == '__main__':
     spark = SparkSession.builder.appName('Patch Alto').getOrCreate()
     spark.sparkContext.setLogLevel('WARN')
 
-    gen_alto = udf(lambda fout, img, width, height,
-                   lines: genAlto(config.scale, config.outputPath+'/'+fout, config.base+img,
+    gen_alto = udf(lambda img, width, height,
+                   lines: genAlto(config.scale,
+                                  config.outputPath+'/'+img+'.xml', config.base+img,
                                   width, height, lines),
                    'int').asNondeterministic()
 
@@ -93,14 +98,15 @@ if __name__ == '__main__':
     else:
         elect = raw
 
-    lines = elect.groupBy('img', 'width', 'height', 'begin', 'x', 'y', 'w', 'h'
+    lines = elect.na.drop(subset=['img', 'width', 'height', 'begin', 'x','y','w','h', 'srcText']
+                ).groupBy('img', 'width', 'height', 'begin', 'x', 'y', 'w', 'h'
                 ).agg((f.max(struct('matchRate', 'srcText'))['srcText']).alias('srcText')
                 ).groupBy('img', 'width', 'height'
                 ).agg(sort_array(collect_list(struct('begin', 'x', 'y', 'w', 'h',
                                                      'srcText'))).alias('lines')
                 ).withColumn('fname', f.concat(f.monotonically_increasing_id().cast('string'),
                                                f.lit('.xml'))
-                ).select(gen_alto('fname', 'img', 'width', 'height', 'lines').alias('result')
+                ).select(gen_alto('img', 'width', 'height', 'lines').alias('result')
                 ).select(f.sum('result').alias('lines')).collect()
 
     print('# lines: ', lines)

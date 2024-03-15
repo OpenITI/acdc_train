@@ -113,16 +113,6 @@ if __name__ == '__main__':
         ).select('id', f.size('lines').alias('nlines'),
                  explode(wit_lines('lines', 'pages')).alias('line')
         ).select('id', 'nlines', col('line.*')
-        # ).select(col('page.id').alias('img'), 'id', 'nlines', col('page.regions'),
-        #          col('page.width'), col('page.height'),
-        #          col('line.begin'), length(sstrip('line.text')).alias('length'),
-        #          col('line.text').alias('dstText'),
-        #          col('line.wits')[0]['id'].alias('src'),
-        #          col('line.wits')[0]['matches'].alias('matches'),
-        #          translate(col('line.wits')[0]['alg'], '\n', ' ').alias('srcAlg'),
-        #          col('line.wits')[0]['alg2'].alias('dstAlg')
-        # ).withColumn('dstLength', length(sstrip(translate('dstAlg', '-', '')))
-        # ).filter(col('dstLength') >= config.min_line
         ).withColumn('length', length(sstrip('dstText'))
         ).withColumn('srcAlg', fix_hyphen('srcAlg', 'dstAlg')
         ).withColumn('srcOrig', col('srcAlg')
@@ -136,18 +126,6 @@ if __name__ == '__main__':
         ).withColumn('tailGap', f.greatest(length(f.regexp_extract('dstAlg', r'(\-+)\s*$', 1)),
                                            length(f.regexp_extract('srcAlg', r'(\-+)\s*$', 1)))
         ).withColumn('digitMatch', digit_match('srcAlg', 'dstAlg')
-        # ).withColumn('regions',
-        #              f.filter('regions', lambda r: (r['start'] >= col('begin')) &
-        #                       ((r['start'] + r['length']) <= (col('begin') + length('dstText'))))
-        # ).withColumn('x', f.array_min('regions.coords.x')
-        # ).withColumn('y', f.array_min('regions.coords.y')
-        # ).withColumn('w',
-        #              f.array_max(f.transform('regions.coords',
-        #                                      lambda r: r['x'] + r['w'])) - col('x')
-        # ).withColumn('h',
-        #              f.array_max(f.transform('regions.coords',
-        #                                      lambda r: r['y'] + r['h'])) - col('y')
-        # ).drop('regions'
         ).sort(f.desc('matchRate')
         ).write.json(config.outputPath, mode='overwrite')
 

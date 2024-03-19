@@ -92,6 +92,8 @@ if __name__ == '__main__':
                          help='Minimum length of line', metavar='N')
     parser.add_argument('--fix-case', action='store_true',
                         help='Match case in destination.')
+    parser.add_argument('--fields', type=str, nargs='+', default=[],
+                        help='List of fields to include')
     parser.add_argument('inputPath', metavar='<input path>', help='input path')
     parser.add_argument('outputPath', metavar='<output path>', help='output path')
 
@@ -110,9 +112,9 @@ if __name__ == '__main__':
     raw = spark.read.load(config.inputPath)
     
     raw.filter(col('pages').isNotNull() & (f.size('pages') == 1) & col('pages')[0]['regions'].isNotNull()
-        ).select('id', f.size('lines').alias('nlines'),
+        ).select('id', *config.fields, f.size('lines').alias('nlines'),
                  explode(wit_lines('lines', 'pages')).alias('line')
-        ).select('id', 'nlines', col('line.*')
+        ).select('id', *config.fields, 'nlines', col('line.*')
         ).withColumn('length', length(sstrip('dstText'))
         ).withColumn('srcAlg', fix_hyphen('srcAlg', 'dstAlg')
         ).withColumn('srcOrig', col('srcAlg')

@@ -21,7 +21,7 @@ mkdir -p `dirname $ins | sed "s/ /\n/g" | perl -pe "\\$_=\"$outdir\".\\$_"`
 
 #echo mkdir -p `dirname $ins | sort -u | sed "s/^/$outdir\//"`
 
-inargs=`for f in $ins; do echo "-i $f $outdir/$f" | perl -pe 's/\.png$/.xml/'; done`
+inargs=`for f in $ins; do echo "-i $f $outdir/$f" | perl -pe 's/\.(png|jpg|tiff)$/.xml/i'; done`
 
 #echo $ins | sed 's/ /\n/g' | xargs -L 1 echo kraken "{} $rest"
 

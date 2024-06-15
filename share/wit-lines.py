@@ -111,7 +111,7 @@ if __name__ == '__main__':
 
     raw = spark.read.load(config.inputPath)
     
-    raw.filter(col('pages').isNotNull() & (f.size('pages') == 1) & col('pages')[0]['regions'].isNotNull()
+    raw.filter(col('pages').isNotNull() & col('pages')[0]['regions'].isNotNull()
         ).select('id', *config.fields, f.size('lines').alias('nlines'),
                  explode(wit_lines('lines', 'pages')).alias('line')
         ).select('id', *config.fields, 'nlines', col('line.*')

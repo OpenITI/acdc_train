@@ -69,6 +69,15 @@ def fixCase(src, dst):
         i += 1
     return ''.join(res)
 
+def fixLongs(src, dst):
+    res = list(src)
+    i = 0
+    while i < (len(res)-1):
+        if res[i] == 's' and (dst[i] == '\u017F' or dst[i] == 'f'):
+            res[i] = '\u017F'
+        i += 1
+    return ''.join(res)
+
 def digitMatch(src, dst):
     "Intersection-over-union of digits"
     union = 0
@@ -92,6 +101,8 @@ if __name__ == '__main__':
                          help='Minimum length of line', metavar='N')
     parser.add_argument('--fix-case', action='store_true',
                         help='Match case in destination.')
+    parser.add_argument('--fix-longs', action='store_true',
+                        help='Infer underlying long s from destination.')
     parser.add_argument('--fields', type=str, nargs='+', default=[],
                         help='List of fields to include')
     parser.add_argument('inputPath', metavar='<input path>', help='input path')
@@ -103,6 +114,7 @@ if __name__ == '__main__':
     max_gap = udf(lambda s: maxGap(s), 'int')
     fix_hyphen = udf(lambda src, dst: fixHyphen(src, dst))
     fix_case = udf(lambda src, dst: fixCase(src, dst) if config.fix_case else src)
+    fix_longs = udf(lambda src, dst: fixLongs(src, dst) if config.fix_longs else src)
     digit_match = udf(lambda src, dst: digitMatch(src, dst), 'double')
     sstrip = udf(lambda s: s.strip())
 
@@ -118,7 +130,7 @@ if __name__ == '__main__':
         ).withColumn('length', length(sstrip('dstText'))
         ).withColumn('srcAlg', fix_hyphen('srcAlg', 'dstAlg')
         ).withColumn('srcOrig', col('srcAlg')
-        ).withColumn('srcAlg', fix_case('srcAlg', 'dstAlg')
+        ).withColumn('srcAlg', fix_longs(fix_case('srcAlg', 'dstAlg'), 'dstAlg')
         ).withColumn('srcText', translate('srcAlg', '\n\u2010-', ' -')                     
         ).withColumn('matchRate',
                      col('matches') / f.greatest(length('dstText'), length('srcText'))

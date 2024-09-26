@@ -4,6 +4,9 @@ This package provides code for producing training data for optical character rec
 
 For background and a walkthrough of using these tools, see [the video tutorial](https://www.youtube.com/watch?v=kNx4GyH5HSo).
 
+The method was published in this paper: 
+David A. Smith, Jacob Murel, Jonathan Parkes Allen, Matthew Thomas Miller: "Automatic Collation for Diversifying Corpora: Commonly Copied Texts as Distant Supervision for Handwritten Text Recognition", CHR 2023: Computational Humanities Research Conference, December 6 – 8, 2023, Paris, France. [PDF](https://ceur-ws.org/Vol-3558/paper1708.pdf)
+
 First, install [`passim`](https://github.com/dasmiq/passim). Then install [`kraken`](https://github.com/mittagessen/kraken).  If you want to start with PDF files of books rather than page images, use the `pdf` option:
 ```
 pip install --user kraken[pdf]

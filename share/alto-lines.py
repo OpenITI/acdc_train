@@ -27,9 +27,9 @@ def textLines(s):
                     text += w.get('CONTENT')
                     if w.get('HPOS') != None:
                         regions.append((sstart, len(text) - sstart,
-                                        (int(w.get('HPOS')), int(w.get('VPOS')),
-                                         int(w.get('WIDTH')), int(w.get('HEIGHT')),
-                                         int(w.get('HEIGHT')))))
+                                        (int(float(w.get('HPOS'))), int(float(w.get('VPOS'))),
+                                         int(float(w.get('WIDTH'))), int(float(w.get('HEIGHT'))),
+                                         int(float(w.get('HEIGHT'))))))
                 text += '\n'
                 lines.append((start, len(text) - start, line.get('ID')))
             pages.append((img,

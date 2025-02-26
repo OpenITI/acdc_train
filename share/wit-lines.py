@@ -57,7 +57,7 @@ def maxGap(s):
 
 def fixHyphen(src, dst):
     if len(src) >= 3 and len(dst) >= 3 and dst.endswith('\u2010\n') and dst[-3] != '-' and src[-3] != '-' and src.endswith('--'):
-        src = src[0:(len(src)-2)] + '\u2010\n'
+        src = src[:(len(src)-2)] + '\u2010\n'
     return src
 
 def fixCase(src, dst):
@@ -99,10 +99,14 @@ if __name__ == '__main__':
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--min-line', type=int, default=5,
                          help='Minimum length of line', metavar='N')
+    parser.add_argument('--max-line', type=int, default=500,
+                         help='Maximum length of line', metavar='N')
     parser.add_argument('--fix-case', action='store_true',
                         help='Match case in destination.')
     parser.add_argument('--fix-longs', action='store_true',
                         help='Infer underlying long s from destination.')
+    parser.add_argument('--no-coords', action='store_true',
+                        help='Suppress line coordinates.')
     parser.add_argument('--fields', type=str, nargs='+', default=[],
                         help='List of fields to include')
     parser.add_argument('inputPath', metavar='<input path>', help='input path')
@@ -122,25 +126,44 @@ if __name__ == '__main__':
                     'array<struct<begin: int, dstText: string, src: string, matches: int, srcAlg: string, dstAlg: string, dstLength: int, img: string, width: int, height: int, x: int, y: int, w: int, h: int>>')
 
     raw = spark.read.load(config.inputPath)
+
+    if config.no_coords:
+        wits = raw.select('id', *config.fields, f.size('lines').alias('nlines'),
+                          explode('lines').alias('line')
+                 ).filter(length('line.text') >= config.min_line
+                 ).filter(length('line.text') <= config.max_line
+                 ).filter(col('line.wits').isNotNull() & (f.size('line.wits') > 0)
+                 ).withColumn('wit', col('line.wits')[0]
+                 ).select('id', *config.fields, 'nlines',
+                           'line.begin',
+                           col('line.text').alias('dstText'),
+                           col('wit.id').alias('src'),
+                           'wit.matches',
+                           translate('wit.alg', '\n', ' ').alias('srcAlg'),
+                           col('wit.alg2').alias('dstAlg'),
+                           length(f.trim(translate('wit.alg', '-', ''))).alias('dstLength')
+                ).filter(length('dstAlg') <= (2 * config.max_line)
+                ).filter(col('dstLength') >= config.min_line)
+    else:
+        wits = raw.filter(col('pages').isNotNull() & col('pages')[0]['regions'].isNotNull()
+                 ).select('id', *config.fields, f.size('lines').alias('nlines'),
+                          explode(wit_lines('lines', 'pages')).alias('line')
+                 ).select('id', *config.fields, 'nlines', col('line.*'))
     
-    raw.filter(col('pages').isNotNull() & col('pages')[0]['regions'].isNotNull()
-        ).select('id', *config.fields, f.size('lines').alias('nlines'),
-                 explode(wit_lines('lines', 'pages')).alias('line')
-        ).select('id', *config.fields, 'nlines', col('line.*')
-        ).withColumn('length', length(sstrip('dstText'))
-        ).withColumn('srcAlg', fix_hyphen('srcAlg', 'dstAlg')
-        ).withColumn('srcOrig', col('srcAlg')
-        ).withColumn('srcAlg', fix_longs(fix_case('srcAlg', 'dstAlg'), 'dstAlg')
-        ).withColumn('srcText', translate('srcAlg', '\n\u2010-', ' -')                     
-        ).withColumn('matchRate',
-                     col('matches') / f.greatest(length('dstText'), length('srcText'))
-        ).withColumn('maxGap', f.greatest(max_gap('srcAlg'), max_gap('dstAlg'))
-        ).withColumn('leadGap', f.greatest(length(f.regexp_extract('dstAlg', r'^\s*(\-+)', 1)),
-                                           length(f.regexp_extract('srcAlg', r'^\s*(\-+)', 1)))
-        ).withColumn('tailGap', f.greatest(length(f.regexp_extract('dstAlg', r'(\-+)\s*$', 1)),
-                                           length(f.regexp_extract('srcAlg', r'(\-+)\s*$', 1)))
-        ).withColumn('digitMatch', digit_match('srcAlg', 'dstAlg')
-        ).sort(f.desc('matchRate')
-        ).write.json(config.outputPath, mode='overwrite')
+    wits.withColumn('length', length(f.trim('dstText'))
+       ).withColumn('srcAlg', fix_hyphen('srcAlg', 'dstAlg')
+       ).withColumn('srcOrig', col('srcAlg')
+       ).withColumn('srcAlg', fix_longs(fix_case('srcAlg', 'dstAlg'), 'dstAlg')
+       ).withColumn('srcText', translate('srcAlg', '\n\u2010-', ' -')                     
+       ).withColumn('matchRate',
+                    col('matches') / f.greatest(length('dstText'), length('srcText'))
+       ).withColumn('maxGap', f.greatest(max_gap('srcAlg'), max_gap('dstAlg'))
+       ).withColumn('leadGap', f.greatest(length(f.regexp_extract('dstAlg', r'^\s*(\-+)', 1)),
+                                          length(f.regexp_extract('srcAlg', r'^\s*(\-+)', 1)))
+       ).withColumn('tailGap', f.greatest(length(f.regexp_extract('dstAlg', r'(\-+)\s*$', 1)),
+                                          length(f.regexp_extract('srcAlg', r'(\-+)\s*$', 1)))
+       ).withColumn('digitMatch', digit_match('srcAlg', 'dstAlg')
+       ).sort(f.desc('matchRate')
+       ).write.json(config.outputPath, mode='overwrite')
 
     spark.stop()

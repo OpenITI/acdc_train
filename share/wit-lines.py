@@ -34,7 +34,7 @@ def witLines(lines, pages, min_line=0):
                     x2 = max(x2, cur.x + cur.w)
                     y2 = max(y2, cur.y + cur.h)
                     i += 1
-                res.append((line.begin, line.text, wit.id, wit.matches,
+                res.append((line.begin, line.text, wit.id, wit.begin, wit.matches,
                             wit.alg.replace('\n', ' '), dstAlg, dstLength,
                             pages[p].id, pages[p].width, pages[p].height,
                             x1, y1, x2 - x1, y2 - y1))
@@ -123,7 +123,7 @@ if __name__ == '__main__':
     sstrip = udf(lambda s: s.strip())
 
     wit_lines = udf(lambda lines, pages: witLines(lines, pages, config.min_line),
-                    'array<struct<begin: int, dstText: string, src: string, matches: int, srcAlg: string, dstAlg: string, dstLength: int, img: string, width: int, height: int, x: int, y: int, w: int, h: int>>')
+                    'array<struct<begin: int, dstText: string, src: string, srcBegin: int, matches: int, srcAlg: string, dstAlg: string, dstLength: int, img: string, width: int, height: int, x: int, y: int, w: int, h: int>>')
 
     raw = spark.read.load(config.inputPath)
 
@@ -133,15 +133,17 @@ if __name__ == '__main__':
                  ).filter(length('line.text') >= config.min_line
                  ).filter(length('line.text') <= config.max_line
                  ).filter(col('line.wits').isNotNull() & (f.size('line.wits') > 0)
-                 ).withColumn('wit', col('line.wits')[0]
+#                 ).withColumn('wit', col('line.wits')[0]
+                 ).withColumn('wit', explode('line.wits')
                  ).select('id', *config.fields, 'nlines',
                            'line.begin',
                            col('line.text').alias('dstText'),
                            col('wit.id').alias('src'),
+                           col('wit.begin').alias('srcBegin'),
                            'wit.matches',
                            translate('wit.alg', '\n', ' ').alias('srcAlg'),
                            col('wit.alg2').alias('dstAlg'),
-                           length(f.trim(translate('wit.alg', '-', ''))).alias('dstLength')
+                           length(f.btrim(translate('wit.alg2', '-', ''), lit(' \n'))).alias('dstLength')
                 ).filter(length('dstAlg') <= (2 * config.max_line)
                 ).filter(col('dstLength') >= config.min_line)
     else:
@@ -150,7 +152,7 @@ if __name__ == '__main__':
                           explode(wit_lines('lines', 'pages')).alias('line')
                  ).select('id', *config.fields, 'nlines', col('line.*'))
     
-    wits.withColumn('length', length(f.trim('dstText'))
+    wits.withColumn('length', length(f.btrim('dstText', lit(' \n')))
        ).withColumn('srcAlg', fix_hyphen('srcAlg', 'dstAlg')
        ).withColumn('srcOrig', col('srcAlg')
        ).withColumn('srcAlg', fix_longs(fix_case('srcAlg', 'dstAlg'), 'dstAlg')
@@ -163,7 +165,7 @@ if __name__ == '__main__':
        ).withColumn('tailGap', f.greatest(length(f.regexp_extract('dstAlg', r'(\-+)\s*$', 1)),
                                           length(f.regexp_extract('srcAlg', r'(\-+)\s*$', 1)))
        ).withColumn('digitMatch', digit_match('srcAlg', 'dstAlg')
-       ).sort(f.desc('matchRate')
+       ).sort(f.desc('matchRate'), 'id', 'begin'
        ).write.json(config.outputPath, mode='overwrite')
 
     spark.stop()

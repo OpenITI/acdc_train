@@ -4,6 +4,7 @@ from pyspark.sql.functions import col, collect_list, explode, sort_array, struct
 import pyspark.sql.functions as f
 from io import StringIO, BytesIO
 from lxml import etree
+import unicodedata
 
 ns = {'alto': 'http://www.loc.gov/standards/alto/ns-v4#'}
 
@@ -13,9 +14,9 @@ def textLines(s):
     pages = []
     if s != None and s != '':
         tree = etree.parse(BytesIO(s))
-        img = tree.findtext('//alto:sourceImageInformation/alto:fileName', namespaces=ns).strip()
+        img = tree.findtext('.//alto:sourceImageInformation/alto:fileName', namespaces=ns).strip()
         seq = 0
-        for p in tree.findall('//alto:Page', namespaces=ns):
+        for p in tree.findall('.//alto:Page', namespaces=ns):
             regions = []
             for line in p.findall('.//alto:TextLine', namespaces=ns):
                 ## This should be generalized to support lines w/ and w/o CONTENT attribute.
@@ -24,7 +25,7 @@ def textLines(s):
                     if text != '' and not text[len(text)-1].isspace():
                         text += ' '
                     sstart = len(text)
-                    text += w.get('CONTENT')
+                    text += unicodedata.normalize('NFD', w.get('CONTENT'))
                     if w.get('HPOS') != None:
                         regions.append((sstart, len(text) - sstart,
                                         (int(float(w.get('HPOS'))), int(float(w.get('VPOS'))),

@@ -69,6 +69,8 @@ if __name__ == '__main__':
     parser.add_argument('-n', '--lines', type=int,
                         default=None,
                         help='Maximum number of lines per book')
+    parser.add_argument('-r', '--rescale', type=str,
+                        help='JSON rescaling data')    
     parser.add_argument('-s', '--scale', action='store_true',
                         help='Check image size to rescale coordinates')
     parser.add_argument('inputPath', metavar='<input path>', help='input path')
@@ -97,6 +99,20 @@ if __name__ == '__main__':
         elect = raw.join(sample, ['id', 'lineID'], 'left_semi')
     else:
         elect = raw
+
+    if config.rescale:
+        rescale = spark.read.json(config.rescale)
+
+        elect = elect.withColumnRenamed('width', 'altoWidth'
+                    ).withColumnRenamed('height', 'altoHeight'
+                    ).join(rescale, ['img'], 'left_outer'
+                    ).withColumn('width', f.coalesce('width', 'altoWidth')
+                    ).withColumn('height', f.coalesce('height', 'altoHeight')
+                    ).withColumn('scale', col('width')/col('altoWidth')
+                    ).withColumn('x', col('x') * col('scale')
+                    ).withColumn('y', col('y') * col('scale')
+                    ).withColumn('w', col('w') * col('scale')
+                    ).withColumn('h', col('h') * col('scale'))
 
     lines = elect.na.drop(subset=['img', 'width', 'height', 'begin', 'x','y','w','h', 'srcText']
                 ).groupBy('img', 'width', 'height', 'begin', 'x', 'y', 'w', 'h'

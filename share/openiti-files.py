@@ -9,10 +9,14 @@ def cleanOpenITI(text):
     text = sub(r'#+OpenITI#\n*', '', text)
     text = sub(r'[ ]+\n', '\n',
                sub(r'\n[ ]+', '\n',
-                   sub(r' [ ]+', ' ',
-                       sub(r'\p{P}', ' ',
-                           sub(r'PageV\S+|ms\d+|\p{M}', '',
-                               text)))))
+                   sub(r'\n~~', '\n',
+                       sub(r' [ ]+', ' ',
+                           sub(r'\p{P}', ' ',
+                               sub(r' @Q[BE]@', ' ',
+                                   sub(r'\([0-9]+\)', ' ',
+                                       sub(r'\[[0-9]+\]', ' ',
+                                           sub(r'PageV\S+|ms\d+|\p{M}', '',
+                                               text)))))))))
     return text
 
 if __name__ == '__main__':

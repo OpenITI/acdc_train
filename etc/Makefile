@@ -30,12 +30,13 @@ QUEUE=short
 WORKERS=40
 CORES=5
 CMEM=8
+QTIME= --time 1-0
 
-spark_run = WORKERS=${WORKERS} CORES=${CORES} CMEM=${CMEM} QUEUE=${QUEUE} source run-saspark.sh; \
-srun -x c0178,c3085 --time 1-0 -p ${QUEUE} -N 1 -c 2 --mem=40G -d "after:$$SPARK_MASTER_JOBID" bash -c "$(1)"; \
+spark_run = WORKERS=${WORKERS} CORES=${CORES} CMEM=${CMEM} QUEUE=${QUEUE} QTIME="${QTIME}" source run-saspark.sh; \
+srun -x c0178,c3085 ${QTIME} -p ${QUEUE} -N 1 -c 2 --mem=40G -d "after:$$SPARK_MASTER_JOBID" bash -c "$(1)"; \
 scancel $$SPARK_WORKER_JOBID $$SPARK_MASTER_JOBID
 
-slurm_run = srun --time 1-0 -p ${QUEUE} -N 1 -c $(SWORKERS) --mem=$(SMEM)G bash -c "$(1)";
+slurm_run = srun ${QTIME} -p ${QUEUE} -N 1 -c $(SWORKERS) --mem=$(SMEM)G bash -c "$(1)";
 
 gpu_run = srun -p gpu --gres=gpu:k80:1 -N 1 -c 1 --mem=4G --time=08:00:00 bash -c "$(1)";
 endif
@@ -64,6 +65,9 @@ cwd=$(shell pwd)/
 %-n$(N)m$(M).out/out.json/_SUCCESS:	%.in/_SUCCESS
 	$(call spark_run,seriatim --docwise --log-level INFO --floating-ngrams --complete-lines -n $(N) -m $(M) --fields ref --filterpairs 'ref = 1 AND ref2 = 0' $(dir $<) $(dir $(patsubst %/,%,$(dir $@))))
 
+%-apn$(N)m$(M).out/out.json/_SUCCESS:	%.in/_SUCCESS
+	$(call spark_run,seriatim --all-pairs --docwise --log-level INFO --floating-ngrams --complete-lines -n $(N) -m $(M) --fields ref --filterpairs 'uid <> uid2 AND ref2 = 0' $(dir $<) $(dir $(patsubst %/,%,$(dir $@))))
+
 images/_SUCCESS:	$(patsubst %,images/%/_SUCCESS,$(basename $(notdir $(wildcard pdf/*))))
 	touch $@
 
@@ -72,7 +76,7 @@ images/%/_SUCCESS:	pdf/%.pdf
 
 splits/_SUCCESS:	images/_SUCCESS
 	mkdir -p $(dir $@)
-	find images -type f -name \*.png | split -l 100 - $(dir $@)x
+	find images/ -type f | grep -i '\.\(png\|jpg\|jpeg\)$$' | split -l 100 - $(dir $@)x
 	touch $@
 
 print/_SUCCESS:	splits/_SUCCESS

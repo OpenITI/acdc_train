@@ -1,4 +1,4 @@
-import argparse, math, re
+import argparse, math, re, regex
 from pyspark.sql import SparkSession, Row
 from pyspark.sql.functions import col, collect_list, explode, length, lit, struct, translate, udf
 import pyspark.sql.functions as f
@@ -55,6 +55,38 @@ def maxGap(s):
         res = cur
     return res
 
+def countMatches(src, dst):
+    res = 0
+    for s, d in zip(src, dst):
+        if s == d:
+            res += 1
+    return res
+
+def tokPairs(src, dst):
+    toks = []
+    stok = ''
+    dtok = ''
+    for s, d in zip(src, dst):
+        stok += s
+        dtok += d
+        if s == ' ' and (d == ' ' or d == '-'):
+            toks.append((stok, dtok))
+            stok = ''
+            dtok = ''
+    if stok != '':
+        toks.append((stok, dtok))
+    return toks
+
+def fixSrc(src, dst):
+    res = ''
+    for s, d in tokPairs(src, dst):
+        if len(s) > 2 and len(d) > 2 and (regex.match(r'\p{P}', d[-2]) != None) and (s[-2] == '-'):
+            s = s[0:(len(s)-2)] + d[-2:]
+        if re.fullmatch(r'\d+\s*', s) and re.fullmatch(r'\-+', d):
+            s = d
+        res += s
+    return res
+
 def fixHyphen(src, dst):
     if len(src) >= 3 and len(dst) >= 3 and dst.endswith('\u2010\n') and dst[-3] != '-' and src[-3] != '-' and src.endswith('--'):
         src = src[:(len(src)-2)] + '\u2010\n'
@@ -105,6 +137,8 @@ if __name__ == '__main__':
                         help='Match case in destination.')
     parser.add_argument('--fix-longs', action='store_true',
                         help='Infer underlying long s from destination.')
+    parser.add_argument('--fix-src', action='store_true',
+                        help='Remove common edits from source.')
     parser.add_argument('--no-coords', action='store_true',
                         help='Suppress line coordinates.')
     parser.add_argument('--fields', type=str, nargs='+', default=[],
@@ -119,6 +153,8 @@ if __name__ == '__main__':
     fix_hyphen = udf(lambda src, dst: fixHyphen(src, dst))
     fix_case = udf(lambda src, dst: fixCase(src, dst) if config.fix_case else src)
     fix_longs = udf(lambda src, dst: fixLongs(src, dst) if config.fix_longs else src)
+    fix_src = udf(lambda src, dst: fixSrc(src, dst) if config.fix_src else src)
+    count_matches = udf(lambda src, dst: countMatches(src, dst), 'int')
     digit_match = udf(lambda src, dst: digitMatch(src, dst), 'double')
     sstrip = udf(lambda s: s.strip())
 
@@ -155,8 +191,9 @@ if __name__ == '__main__':
     wits.withColumn('length', length(f.btrim('dstText', lit(' \n')))
        ).withColumn('srcAlg', fix_hyphen('srcAlg', 'dstAlg')
        ).withColumn('srcOrig', col('srcAlg')
-       ).withColumn('srcAlg', fix_longs(fix_case('srcAlg', 'dstAlg'), 'dstAlg')
+       ).withColumn('srcAlg', fix_src(fix_longs(fix_case('srcAlg', 'dstAlg'), 'dstAlg'), 'dstAlg')
        ).withColumn('srcText', translate('srcAlg', '\n\u2010-', ' -')                     
+       ).withColumn('matches', count_matches('srcAlg', 'dstAlg')
        ).withColumn('matchRate',
                     col('matches') / f.greatest(length('dstText'), length('srcText'))
        ).withColumn('maxGap', f.greatest(max_gap('srcAlg'), max_gap('dstAlg'))
@@ -169,3 +206,4 @@ if __name__ == '__main__':
        ).write.json(config.outputPath, mode='overwrite')
 
     spark.stop()
+    exit(0)
